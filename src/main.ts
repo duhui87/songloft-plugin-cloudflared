@@ -174,11 +174,25 @@ async function cloudflareApi<T = any>(method: string, path: string, token: strin
 
 // 用 API Token 在 Cloudflare 侧创建命名隧道（无需 cloudflared login / localhost 回调）
 async function createTunnelViaApi(name: string, accountId: string, apiToken: string): Promise<{ id: string; token: string }> {
-  const created = await cloudflareApi<{ result: { id: string; token: string } }>(
-    'POST', '/cfd_tunnel', apiToken, accountId, { name },
+  // 先查是否已存在同名隧道，存在则复用（避免重复创建）
+  const list = await cloudflareApi<{ result: Array<{ id: string; name: string }> }>(
+    'GET', `/cfd_tunnel?name=${encodeURIComponent(name)}`, apiToken, accountId,
   );
-  const id = created.result.id;
-  const token = created.result.token;
+  const existing = (list.result || []).find((t) => t.name === name);
+  let id: string;
+  if (existing) {
+    id = existing.id;
+  } else {
+    const created = await cloudflareApi<{ result: { id: string } }>(
+      'POST', '/cfd_tunnel', apiToken, accountId, { name },
+    );
+    id = created.result.id;
+  }
+  // 创建接口不含 token，需单独获取隧道 Token
+  const tokResp = await cloudflareApi<{ result: { token: string } }>(
+    'GET', `/cfd_tunnel/${id}/token`, apiToken, accountId,
+  );
+  const token = tokResp.result.token;
   // 建立 CNAME：https://<name>.cfargotunnel.com 指向该隧道（best-effort）
   try {
     await cloudflareApi('POST', '/cfd_tunnel/routes', apiToken, accountId, {
