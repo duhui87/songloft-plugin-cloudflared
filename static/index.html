@@ -144,6 +144,31 @@
                 </div>
             </div>
 
+            <!-- Cloudflare API 凭证卡片 -->
+            <div class="card">
+                <div class="card-header">
+                    <span class="material-symbols-outlined">key</span>
+                    <span class="card-title">Cloudflare API 凭证</span>
+                </div>
+                <div class="card-body">
+                    <div class="desc">用于局域网/远程创建固定隧道（无需在本机浏览器登录）。在 Cloudflare 控制台创建具有 Cloudflare Tunnel 权限的 API Token 并填入 Account ID。</div>
+                    <div class="info-row" style="flex-direction:column;align-items:stretch;gap:8px;">
+                        <span class="info-label">Account ID</span>
+                        <input id="cf-account-id" type="text" placeholder="Cloudflare 账户 ID" style="width:100%;padding:12px;border:1px solid var(--md-outline);border-radius:var(--md-radius-sm);font-family:inherit;font-size:14px;background:transparent;color:var(--md-on-surface);" />
+                    </div>
+                    <div class="info-row" style="flex-direction:column;align-items:stretch;gap:8px;">
+                        <span class="info-label">API Token</span>
+                        <input id="cf-api-token" type="password" placeholder="具有 Cloudflare Tunnel 权限的 Token" style="width:100%;padding:12px;border:1px solid var(--md-outline);border-radius:var(--md-radius-sm);font-family:inherit;font-size:14px;background:transparent;color:var(--md-on-surface);" />
+                    </div>
+                    <div class="action-row">
+                        <button id="btn-save-cf" class="btn-filled">
+                            <span class="material-symbols-outlined">save</span>
+                            保存凭证
+                        </button>
+                    </div>
+                </div>
+            </div>
+
             <!-- 隧道模式卡片 -->
             <div class="card">
                 <div class="card-header">
