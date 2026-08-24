@@ -42,6 +42,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('btn-download').addEventListener('click', downloadCloudflared);
     document.getElementById('btn-copy-url').addEventListener('click', copyTunnelUrl);
 
+    document.getElementById('btn-cf-login').addEventListener('click', startCfLogin);
+    document.getElementById('btn-cf-cancel').addEventListener('click', cancelCfLogin);
+    document.getElementById('btn-create-tunnel').addEventListener('click', createNamedTunnel);
+    document.getElementById('btn-save-config').addEventListener('click', saveTunnelConfig);
+    document.getElementById('mode-select').addEventListener('change', () => {
+        const named = document.getElementById('mode-select').value === 'named';
+        document.getElementById('named-fields').classList.toggle('hidden', !named);
+    });
+
     try {
         const resp = await apiGet('/api/platform');
         if (resp && resp.data) {
@@ -79,6 +88,8 @@ function switchTab(tabName) {
 
     if (tabName === 'settings') {
         loadReleaseInfo();
+        loadTunnelConfig();
+        checkLoginStatus();
     }
 }
 
@@ -117,6 +128,15 @@ function updateStatusUI(data) {
     }
 
     versionText.textContent = data.version || '已安装';
+
+    const modeEl = document.getElementById('status-mode');
+    if (modeEl) {
+        if (data.mode === 'named') {
+            modeEl.textContent = '命名隧道' + (data.tunnelName ? ` (${data.tunnelName})` : '');
+        } else {
+            modeEl.textContent = '快速隧道';
+        }
+    }
 
     if (data.running) {
         statusDot.className = 'status-dot running';
@@ -318,6 +338,151 @@ async function downloadCloudflared() {
         btn.innerHTML = '<span class="material-symbols-outlined">download</span> 下载最新版本';
         progressBar.classList.remove('progress-indeterminate');
         progressBar.classList.add('hidden');
+    }
+}
+
+// ============================================
+// Cloudflare 登录与命名隧道
+// ============================================
+
+let loginPollTimer = null;
+
+async function loadTunnelConfig() {
+    try {
+        const resp = await apiGet('/api/tunnel-config');
+        if (resp && resp.data) {
+            const mode = resp.data.tunnel_mode || 'quick';
+            const name = resp.data.tunnel_name || '';
+            document.getElementById('mode-select').value = mode;
+            document.getElementById('tunnel-name').value = name;
+            document.getElementById('named-fields').classList.toggle('hidden', mode !== 'named');
+        }
+    } catch (e) {
+        console.error('加载隧道配置失败:', e);
+    }
+}
+
+async function checkLoginStatus() {
+    try {
+        const resp = await apiGet('/api/login/status');
+        if (!resp || !resp.data) return;
+        const loggedIn = resp.data.loggedIn;
+        const dot = document.getElementById('cf-status-dot');
+        const text = document.getElementById('cf-status-text');
+        const loginBtn = document.getElementById('btn-cf-login');
+        const cancelBtn = document.getElementById('btn-cf-cancel');
+        const authRow = document.getElementById('cf-auth-row');
+
+        if (loggedIn) {
+            dot.className = 'status-dot running';
+            text.textContent = '已登录';
+            loginBtn.classList.add('hidden');
+            cancelBtn.classList.add('hidden');
+            authRow.classList.add('hidden');
+            stopLoginPolling();
+        } else {
+            dot.className = 'status-dot stopped';
+            text.textContent = '未登录';
+            loginBtn.classList.remove('hidden');
+            authRow.classList.add('hidden');
+            if (resp.data.authUrl) {
+                const link = document.getElementById('cf-auth-url');
+                link.href = resp.data.authUrl;
+                link.textContent = resp.data.authUrl;
+                authRow.classList.remove('hidden');
+                cancelBtn.classList.remove('hidden');
+                startLoginPolling();
+            } else {
+                cancelBtn.classList.add('hidden');
+            }
+        }
+    } catch (e) {
+        console.error('获取登录状态失败:', e);
+    }
+}
+
+function startLoginPolling() {
+    if (loginPollTimer) return;
+    loginPollTimer = setInterval(checkLoginStatus, 3000);
+}
+
+function stopLoginPolling() {
+    if (loginPollTimer) {
+        clearInterval(loginPollTimer);
+        loginPollTimer = null;
+    }
+}
+
+async function startCfLogin() {
+    const btn = document.getElementById('btn-cf-login');
+    btn.disabled = true;
+    try {
+        const resp = await apiPost('/api/login/start', {});
+        if (resp && resp.data && resp.data.message) {
+            showSnackbar(resp.data.message);
+        }
+        startLoginPolling();
+        setTimeout(checkLoginStatus, 1000);
+    } catch (e) {
+        showSnackbar('登录启动失败: ' + e.message);
+    } finally {
+        btn.disabled = false;
+    }
+}
+
+async function cancelCfLogin() {
+    try {
+        await apiPost('/api/login/cancel', {});
+        showSnackbar('已取消登录');
+    } catch (e) {
+        showSnackbar('取消失败: ' + e.message);
+    } finally {
+        stopLoginPolling();
+        checkLoginStatus();
+    }
+}
+
+async function saveTunnelConfig() {
+    const mode = document.getElementById('mode-select').value;
+    const name = document.getElementById('tunnel-name').value.trim();
+    try {
+        const resp = await apiPost('/api/tunnel-config', { tunnel_mode: mode, tunnel_name: name });
+        if (resp && resp.error) {
+            showSnackbar(resp.error);
+        } else if (resp && resp.data && resp.data.message) {
+            showSnackbar(resp.data.message);
+            refreshStatus();
+        }
+    } catch (e) {
+        showSnackbar('保存失败: ' + e.message);
+    }
+}
+
+async function createNamedTunnel() {
+    const name = document.getElementById('tunnel-name').value.trim();
+    const resultEl = document.getElementById('named-result');
+    const btn = document.getElementById('btn-create-tunnel');
+    if (!name) {
+        showSnackbar('请先填写隧道名称');
+        return;
+    }
+    btn.disabled = true;
+    resultEl.classList.add('hidden');
+    try {
+        const resp = await apiPost('/api/create-tunnel', { name });
+        if (resp && resp.data && resp.data.success) {
+            resultEl.textContent = '创建成功，地址：' + resp.data.url;
+            resultEl.classList.remove('hidden');
+            showSnackbar('命名隧道已创建');
+            refreshStatus();
+        } else if (resp && resp.error) {
+            resultEl.textContent = resp.error;
+            resultEl.classList.remove('hidden');
+        }
+    } catch (e) {
+        showSnackbar('创建失败: ' + e.message);
+    } finally {
+        btn.disabled = false;
     }
 }
 
