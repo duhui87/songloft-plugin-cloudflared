@@ -44,6 +44,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     document.getElementById('btn-cf-login').addEventListener('click', startCfLogin);
     document.getElementById('btn-cf-cancel').addEventListener('click', cancelCfLogin);
+    document.getElementById('btn-upload-cert').addEventListener('click', uploadCertFile);
     document.getElementById('btn-create-tunnel').addEventListener('click', createNamedTunnel);
     document.getElementById('btn-save-config').addEventListener('click', saveTunnelConfig);
     document.getElementById('btn-save-cf').addEventListener('click', saveCfConfig);
@@ -451,6 +452,30 @@ async function cancelCfLogin() {
     } finally {
         stopLoginPolling();
         checkLoginStatus();
+    }
+}
+
+async function uploadCertFile() {
+    const content = document.getElementById('cf-cert').value.trim();
+    if (!content) {
+        showSnackbar('请先粘贴 cert.pem 内容');
+        return;
+    }
+    const btn = document.getElementById('btn-upload-cert');
+    btn.disabled = true;
+    try {
+        const resp = await apiPost('/api/cert', { content });
+        if (resp && resp.error) {
+            showSnackbar(resp.error);
+        } else if (resp && resp.data && resp.data.message) {
+            showSnackbar(resp.data.message);
+            document.getElementById('cf-cert').value = '';
+            checkLoginStatus();
+        }
+    } catch (e) {
+        showSnackbar('上传失败: ' + e.message);
+    } finally {
+        btn.disabled = false;
     }
 }
 
