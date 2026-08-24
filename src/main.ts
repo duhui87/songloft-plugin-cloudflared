@@ -107,7 +107,8 @@ async function saveConfig(cfg: PluginConfig): Promise<void> {
 // --- Cloudflare 鐧诲綍锛堟祻瑙堝櫒鎺堟潈锛?---
 
 // cloudflared tunnel login 浼氭妸鎺堟潈 URL 鎵撳嵃鍒?stdout锛屼笖瀹夸富杩涚▼鏃犳硶寮瑰嚭娴忚鍣ㄣ€?// 杩欓噷鐢?shell 閲嶅畾鍚戞妸 stdout 鍐欒繘鏃ュ織鏂囦欢锛屽啀浠庝腑鎻愬彇 URL 灞曠ず缁欑敤鎴锋墜鍔ㄦ墦寮€銆?// 娉ㄦ剰锛氭彃浠朵笅杞界殑 cloudflared 浣嶄簬鎻掍欢鐩綍涓嬬殑 bin/ 瀛愮洰褰曪紝涓嶅湪 PATH 涓紝
-// 鎵€浠?shell 閲岃鐢ㄧ浉瀵硅矾寰?bin/<name> 鏉ヨ皟鐢ㄣ€?async function startLogin(): Promise<void> {
+// 鎵€浠?shell 閲岃鐢ㄧ浉瀵硅矾寰?bin/<name> 鏉ヨ皟鐢ㄣ€?
+async function startLogin(): Promise<void> {
   const bin = getBinName();
   if (isWindows()) {
     const cmd = `if exist "bin\\${bin}" (set "BIN=bin\\${bin}") else (set "BIN=${bin}") & "%BIN%" tunnel login > ${LOGIN_LOG} 2>&1`;
@@ -161,7 +162,8 @@ async function getCloudflaredHome(): Promise<string> {
   return (r.stdout || '').trim() + '/.cloudflared';
 }
 
-// 鎵嬪姩鍐欏叆 cert.pem锛堝綋 cloudflared 鑷姩鍥炰紶璇佷功澶辫触鏃讹紝鐢辩敤鎴峰湪娴忚鍣ㄤ笅杞藉悗绮樿创涓婁紶锛?async function uploadCert(content: string): Promise<void> {
+// 鎵嬪姩鍐欏叆 cert.pem锛堝綋 cloudflared 鑷姩鍥炰紶璇佷功澶辫触鏃讹紝鐢辩敤鎴峰湪娴忚鍣ㄤ笅杞藉悗绮樿创涓婁紶锛?
+async function uploadCert(content: string): Promise<void> {
   const home = await getCloudflaredHome();
   if (isWindows()) {
     await songloft.command.exec('mkdir', [home]);
@@ -190,7 +192,8 @@ async function cloudflareApi<T = any>(method: string, path: string, token: strin
   return json as T;
 }
 
-// 鐢?API Token 鍦?Cloudflare 渚у垱寤哄懡鍚嶉毀閬擄紙鏃犻渶 cloudflared login / localhost 鍥炶皟锛?async function createTunnelViaApi(name: string, accountId: string, apiToken: string): Promise<{ id: string; token: string }> {
+// 鐢?API Token 鍦?Cloudflare 渚у垱寤哄懡鍚嶉毀閬擄紙鏃犻渶 cloudflared login / localhost 鍥炶皟锛?
+async function createTunnelViaApi(name: string, accountId: string, apiToken: string): Promise<{ id: string; token: string }> {
   // 鍏堟煡鏄惁宸插瓨鍦ㄥ悓鍚嶉毀閬擄紝瀛樺湪鍒欏鐢紙閬垮厤閲嶅鍒涘缓锛?  const list = await cloudflareApi<{ result: Array<{ id: string; name: string }> }>(
     'GET', `/cfd_tunnel?name=${encodeURIComponent(name)}`, apiToken, accountId,
   );
@@ -287,7 +290,8 @@ async function getVersion(): Promise<string> {
 
 // --- 闅ч亾绠＄悊 ---
 
-// 涓恒€岃繙绋嬫墭绠°€嶉毀閬撳啓鍏?ingress 閰嶇疆锛堟寚鍚戞湰鏈烘湇鍔★級锛岄伩鍏嶄緷璧?--url 鐨勮涓哄樊寮?async function ensureIngress(cfg: PluginConfig, port: string): Promise<void> {
+// 涓恒€岃繙绋嬫墭绠°€嶉毀閬撳啓鍏?ingress 閰嶇疆锛堟寚鍚戞湰鏈烘湇鍔★級锛岄伩鍏嶄緷璧?--url 鐨勮涓哄樊寮?
+async function ensureIngress(cfg: PluginConfig, port: string): Promise<void> {
   if (!cfg.cf_api_token || !cfg.cf_account_id || !cfg.tunnel_id || !cfg.tunnel_name) return;
   const body = {
     config: {
