@@ -8,7 +8,11 @@ const router = createRouter();
 let detectedPlatform = '';
 let cachedTunnelUrl = '';
 const PROCESS_NAME = 'cloudflared-tunnel';
+const LOGIN_PROCESS = 'cloudflared-login';
 const TUNNEL_URL_REGEX = /https?:\/\/[a-zA-Z0-9-]+\.trycloudflare\.com/;
+const CLOUDFLARE_AUTH_REGEX = /https:\/\/dash\.cloudflare\.com\/[^\s"'<>]+/;
+const CONFIG_FILE = 'config.json';
+const LOGIN_LOG = 'login-output.log';
 
 const PLATFORM_ASSETS: Record<string, { file: string; extract: boolean }> = {
   'darwin-amd64':  { file: 'cloudflared-darwin-amd64.tgz', extract: true },
@@ -55,6 +59,83 @@ function getBinName(): string {
   return isWindows() ? 'cloudflared.exe' : 'cloudflared';
 }
 
+// --- 插件配置（文件方式持久化） ---
+
+interface PluginConfig {
+  tunnel_mode: 'quick' | 'named';
+  tunnel_name: string;
+}
+
+async function loadConfig(): Promise<PluginConfig> {
+  try {
+    if (!await songloft.fs.exists(CONFIG_FILE)) {
+      return { tunnel_mode: 'quick', tunnel_name: '' };
+    }
+    const content = await songloft.fs.readFile(CONFIG_FILE);
+    const parsed = JSON.parse(content) as Partial<PluginConfig>;
+    return {
+      tunnel_mode: parsed.tunnel_mode === 'named' ? 'named' : 'quick',
+      tunnel_name: parsed.tunnel_name || '',
+    };
+  } catch (_) {
+    return { tunnel_mode: 'quick', tunnel_name: '' };
+  }
+}
+
+async function saveConfig(cfg: PluginConfig): Promise<void> {
+  await songloft.fs.writeFile(CONFIG_FILE, JSON.stringify(cfg, null, 2));
+}
+
+// --- Cloudflare 登录（浏览器授权） ---
+
+async function startLogin(): Promise<void> {
+  await songloft.command.start(LOGIN_PROCESS, getBinName(), [
+    'tunnel', 'login', '--logfile', LOGIN_LOG, '--loglevel', 'info',
+  ]);
+}
+
+async function isLoggedIn(): Promise<boolean> {
+  try {
+    const r = await songloft.command.exec(getBinName(), ['tunnel', 'list'], { timeout: 8000 });
+    return r.exitCode === 0;
+  } catch (_) {
+    return false;
+  }
+}
+
+async function readLoginLog(): Promise<string> {
+  try {
+    if (!await songloft.fs.exists(LOGIN_LOG)) return '';
+    return await songloft.fs.readFile(LOGIN_LOG);
+  } catch (_) {
+    return '';
+  }
+}
+
+// --- 命名隧道管理 ---
+
+async function tunnelExists(name: string): Promise<boolean> {
+  try {
+    const r = await songloft.command.exec(getBinName(), ['tunnel', 'list'], { timeout: 8000 });
+    if (r.exitCode !== 0) return false;
+    const out = (r.stdout || '') + (r.stderr || '');
+    return out.includes(name);
+  } catch (_) {
+    return false;
+  }
+}
+
+async function createTunnel(name: string): Promise<void> {
+  if (!name) throw new Error('隧道名称不能为空');
+  if (!await tunnelExists(name)) {
+    await songloft.command.exec(getBinName(), ['tunnel', 'create', name], { timeout: 30000 });
+  }
+  // 建立 CNAME，使 https://<name>.cfargotunnel.com 永久可用
+  try {
+    await songloft.command.exec(getBinName(), ['tunnel', 'route', 'dns', name, `${name}.cfargotunnel.com`], { timeout: 20000 });
+  } catch (_) { /* 路由已存在则忽略 */ }
+}
+
 // --- 二进制管理 ---
 
 async function isInstalled(): Promise<boolean> {
@@ -76,7 +157,18 @@ async function getVersion(): Promise<string> {
 // --- 隧道管理 ---
 
 async function startTunnel(port: string): Promise<void> {
-  const args = ['tunnel', '--url', `http://localhost:${port}`, '--logfile', 'output.log', '--loglevel', 'info'];
+  const cfg = await loadConfig();
+  let args: string[];
+
+  if (cfg.tunnel_mode === 'named' && cfg.tunnel_name) {
+    if (!await tunnelExists(cfg.tunnel_name)) {
+      await createTunnel(cfg.tunnel_name);
+    }
+    args = ['tunnel', 'run', '--url', `http://localhost:${port}`, '--logfile', 'output.log', '--loglevel', 'info', cfg.tunnel_name];
+  } else {
+    args = ['tunnel', '--url', `http://localhost:${port}`, '--logfile', 'output.log', '--loglevel', 'info'];
+  }
+
   await songloft.command.start(PROCESS_NAME, getBinName(), args);
   cachedTunnelUrl = '';
 }
@@ -103,6 +195,11 @@ async function readOutput(): Promise<string> {
 
 async function extractTunnelUrl(): Promise<string> {
   if (cachedTunnelUrl) return cachedTunnelUrl;
+  const cfg = await loadConfig();
+  if (cfg.tunnel_mode === 'named' && cfg.tunnel_name) {
+    cachedTunnelUrl = `https://${cfg.tunnel_name}.cfargotunnel.com`;
+    return cachedTunnelUrl;
+  }
   const output = await readOutput();
   if (output) {
     const match = output.match(TUNNEL_URL_REGEX);
@@ -162,12 +259,13 @@ router.get('/api/platform', () => {
 
 router.get('/api/status', async () => {
   const installed = await isInstalled();
+  const cfg = await loadConfig();
   if (!installed) {
-    return jsonResponse({ data: { installed: false, running: false, version: '' } });
+    return jsonResponse({ data: { installed: false, running: false, version: '', mode: cfg.tunnel_mode, tunnelName: cfg.tunnel_name } });
   }
   const running = await isTunnelRunning();
   const version = await getVersion();
-  return jsonResponse({ data: { installed: true, running, version } });
+  return jsonResponse({ data: { installed: true, running, version, mode: cfg.tunnel_mode, tunnelName: cfg.tunnel_name } });
 });
 
 router.post('/api/start', async (req) => {
@@ -177,6 +275,16 @@ router.post('/api/start', async (req) => {
   const running = await isTunnelRunning();
   if (running) {
     return jsonResponse({ error: 'cloudflared 已在运行中' }, 409);
+  }
+
+  const cfg = await loadConfig();
+  if (cfg.tunnel_mode === 'named') {
+    if (!cfg.tunnel_name) {
+      return jsonResponse({ error: '未配置隧道名称，请到设置页选择命名隧道并填写名称' }, 400);
+    }
+    if (!await isLoggedIn()) {
+      return jsonResponse({ error: '请先在设置页登录 Cloudflare' }, 401);
+    }
   }
 
   await startTunnel(port);
@@ -232,6 +340,72 @@ router.get('/api/releases', async () => {
     return jsonResponse({ data: { tag_name: release.tag_name, assets: release.assets } });
   } catch (e: any) {
     return jsonResponse({ error: '获取 release 信息失败: ' + (e.message || e) }, 500);
+  }
+});
+
+// --- Cloudflare 登录与命名隧道路由 ---
+
+router.post('/api/login/start', async () => {
+  try {
+    if (await isLoggedIn()) {
+      return jsonResponse({ data: { message: '已经登录 Cloudflare' } });
+    }
+    await startLogin();
+    return jsonResponse({ data: { message: '已启动登录，请在浏览器中完成授权' } });
+  } catch (e: any) {
+    return jsonResponse({ error: '启动登录失败: ' + (e.message || e) }, 500);
+  }
+});
+
+router.get('/api/login/status', async () => {
+  const loggedIn = await isLoggedIn();
+  let authUrl = '';
+  if (!loggedIn) {
+    const log = await readLoginLog();
+    const match = log.match(CLOUDFLARE_AUTH_REGEX);
+    if (match) authUrl = match[0];
+  }
+  return jsonResponse({ data: { loggedIn, authUrl } });
+});
+
+router.post('/api/login/cancel', async () => {
+  await songloft.command.stop(LOGIN_PROCESS);
+  return jsonResponse({ data: { message: '已取消登录' } });
+});
+
+router.get('/api/tunnel-config', async () => {
+  const cfg = await loadConfig();
+  return jsonResponse({ data: cfg });
+});
+
+router.post('/api/tunnel-config', async (req) => {
+  const body = JSON.parse(String(req.body));
+  const cfg: PluginConfig = {
+    tunnel_mode: body.tunnel_mode === 'named' ? 'named' : 'quick',
+    tunnel_name: (body.tunnel_name || '').trim(),
+  };
+  if (cfg.tunnel_mode === 'named' && !cfg.tunnel_name) {
+    return jsonResponse({ error: '命名隧道模式需要填写隧道名称' }, 400);
+  }
+  await saveConfig(cfg);
+  return jsonResponse({ data: { message: '已保存', config: cfg } });
+});
+
+router.post('/api/create-tunnel', async (req) => {
+  const body = JSON.parse(String(req.body));
+  const name = (body.name || '').trim();
+  if (!name) {
+    return jsonResponse({ error: '隧道名称不能为空' }, 400);
+  }
+  if (!await isLoggedIn()) {
+    return jsonResponse({ error: '请先在设置页登录 Cloudflare' }, 401);
+  }
+  try {
+    await createTunnel(name);
+    await saveConfig({ tunnel_mode: 'named', tunnel_name: name });
+    return jsonResponse({ data: { success: true, message: '隧道已创建', url: `https://${name}.cfargotunnel.com` } });
+  } catch (e: any) {
+    return jsonResponse({ error: '创建失败: ' + (e.message || e) }, 500);
   }
 });
 
