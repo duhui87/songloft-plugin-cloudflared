@@ -46,6 +46,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('btn-cf-cancel').addEventListener('click', cancelCfLogin);
     document.getElementById('btn-create-tunnel').addEventListener('click', createNamedTunnel);
     document.getElementById('btn-save-config').addEventListener('click', saveTunnelConfig);
+    document.getElementById('btn-save-cf').addEventListener('click', saveCfConfig);
     document.getElementById('mode-select').addEventListener('change', () => {
         const named = document.getElementById('mode-select').value === 'named';
         document.getElementById('named-fields').classList.toggle('hidden', !named);
@@ -89,6 +90,7 @@ function switchTab(tabName) {
     if (tabName === 'settings') {
         loadReleaseInfo();
         loadTunnelConfig();
+        loadCfConfig();
         checkLoginStatus();
     }
 }
@@ -449,6 +451,33 @@ async function cancelCfLogin() {
     } finally {
         stopLoginPolling();
         checkLoginStatus();
+    }
+}
+
+async function loadCfConfig() {
+    try {
+        const resp = await apiGet('/api/cf-config');
+        if (resp && resp.data) {
+            document.getElementById('cf-account-id').value = resp.data.account_id || '';
+            document.getElementById('cf-api-token').value = resp.data.api_token || '';
+        }
+    } catch (e) {
+        console.error('加载 Cloudflare 凭证失败:', e);
+    }
+}
+
+async function saveCfConfig() {
+    const accountId = document.getElementById('cf-account-id').value.trim();
+    const apiToken = document.getElementById('cf-api-token').value.trim();
+    try {
+        const resp = await apiPost('/api/cf-config', { account_id: accountId, api_token: apiToken });
+        if (resp && resp.error) {
+            showSnackbar(resp.error);
+        } else if (resp && resp.data && resp.data.message) {
+            showSnackbar(resp.data.message);
+        }
+    } catch (e) {
+        showSnackbar('保存凭证失败: ' + e.message);
     }
 }
 
