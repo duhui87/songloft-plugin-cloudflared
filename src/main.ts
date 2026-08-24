@@ -228,15 +228,15 @@ if (!id) {
     token = typeof raw === 'string' ? raw : (raw && raw.token) || '';
   } catch (e: any) {
     throw new Error(
-      `闅ч亾宸插湪 Cloudflare 鍒涘缓鎴愬姛锛圛D: ${id}锛夛紝浣嗐€岃幏鍙栬繍琛?token銆嶅け璐ワ細${e?.message || e}銆俙 +
+      `闅ч亾宸插湪 Cloudflare 鍒涘缓鎴愬姛锛圛D: ${id}锛夛紝浣嗐€岃幏鍙栬繍琛?token銆嶅け璐ワ細${e?.message || e}銆俙 ` +
       `璇锋鏌?API Token 鏄惁鍏峰銆孋loudflare Tunnel: Edit銆嶆垨銆孋loudflare One Connector: cloudflared銆嶆潈闄愶紱` +
-      `淇鏉冮檺鍚庯紝鐐瑰嚮銆屽垱寤哄懡鍚嶉毀閬撱€嶄細鑷姩澶嶇敤璇ラ毀閬撳苟琛ュ彇 token銆俙,
+      `淇鏉冮檺鍚庯紝鐐瑰嚮銆屽垱寤哄懡鍚嶉毀閬撱€嶄細鑷姩澶嶇敤璇ラ毀閬撳苟琛ュ彇 token銆俙`,
     );
   }
   if (!token) {
     throw new Error(
-      `闅ч亾宸插湪 Cloudflare 鍒涘缓鎴愬姛锛圛D: ${id}锛夛紝浣?Cloudflare 杩斿洖鐨?token 涓虹┖銆俙 +
-      `璇风‘璁?API Token 鍏峰銆孋loudflare Tunnel: Edit銆嶆潈闄愶紝鐒跺悗閲嶆柊鐐瑰嚮銆屽垱寤哄懡鍚嶉毀閬撱€嶃€俙,
+      `闅ч亾宸插湪 Cloudflare 鍒涘缓鎴愬姛锛圛D: ${id}锛夛紝浣?Cloudflare 杩斿洖鐨?token 涓虹┖銆俙 ` +
+      `璇风‘璁?API Token 鍏峰銆孋loudflare Tunnel: Edit銆嶆潈闄愶紝鐒跺悗閲嶆柊鐐瑰嚮銆屽垱寤哄懡鍚嶉毀閬撱€嶃€俙`,
     );
   }
   // 娉細鍛藉悕闅ч亾浼氳嚜鍔ㄥ垎閰?https://<name>.cfargotunnel.com锛屾棤闇€棰濆寤鸿矾鐢?  
