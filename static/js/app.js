@@ -385,6 +385,14 @@ async function checkLoginStatus() {
             authRow.classList.add('hidden');
             loginInProgress = false;
             stopLoginPolling();
+        } else if (resp.data.apiConfigured) {
+            dot.className = 'status-dot running';
+            text.textContent = '已配置 API Token（无需登录）';
+            loginBtn.classList.add('hidden');
+            cancelBtn.classList.add('hidden');
+            authRow.classList.add('hidden');
+            loginInProgress = false;
+            stopLoginPolling();
         } else {
             dot.className = 'status-dot stopped';
             text.textContent = '未登录';
