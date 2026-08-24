@@ -14,6 +14,8 @@ const CLOUDFLARE_AUTH_REGEX = /https:\/\/dash\.cloudflare\.com\/[^\s"'<>]+/;
 const CONFIG_FILE = 'config.json';
 const LOGIN_LOG = 'login-output.log';
 
+const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+
 const PLATFORM_ASSETS: Record<string, { file: string; extract: boolean }> = {
   'darwin-amd64':  { file: 'cloudflared-darwin-amd64.tgz', extract: true },
   'darwin-arm64':  { file: 'cloudflared-darwin-arm64.tgz', extract: true },
@@ -88,10 +90,26 @@ async function saveConfig(cfg: PluginConfig): Promise<void> {
 
 // --- Cloudflare 登录（浏览器授权） ---
 
+// cloudflared tunnel login 会把授权 URL 打印到 stdout，且宿主进程无法弹出浏览器。
+// 这里用 shell 重定向把 stdout 写进日志文件，再从中提取 URL 展示给用户手动打开。
 async function startLogin(): Promise<void> {
-  await songloft.command.start(LOGIN_PROCESS, getBinName(), [
-    'tunnel', 'login', '--logfile', LOGIN_LOG, '--loglevel', 'info',
-  ]);
+  const bin = getBinName();
+  if (isWindows()) {
+    const cmd = `${bin} tunnel login > ${LOGIN_LOG} 2>&1`;
+    await songloft.command.start(LOGIN_PROCESS, 'cmd', ['/c', cmd]);
+  } else {
+    const cmd = `BIN=$(command -v ${bin} 2>/dev/null || echo ./${bin}); "$BIN" tunnel login > ${LOGIN_LOG} 2>&1`;
+    await songloft.command.start(LOGIN_PROCESS, 'sh', ['-c', cmd]);
+  }
+}
+
+async function cancelLogin(): Promise<void> {
+  await songloft.command.stop(LOGIN_PROCESS);
+  if (!isWindows()) {
+    try {
+      await songloft.command.exec('pkill', ['-f', 'tunnel login'], { timeout: 5000 });
+    } catch (_) { /* 没有残留进程则忽略 */ }
+  }
 }
 
 async function isLoggedIn(): Promise<boolean> {
@@ -110,6 +128,12 @@ async function readLoginLog(): Promise<string> {
   } catch (_) {
     return '';
   }
+}
+
+async function extractAuthUrl(): Promise<string> {
+  const log = await readLoginLog();
+  const match = log.match(CLOUDFLARE_AUTH_REGEX);
+  return match ? match[0] : '';
 }
 
 // --- 命名隧道管理 ---
@@ -348,10 +372,17 @@ router.get('/api/releases', async () => {
 router.post('/api/login/start', async () => {
   try {
     if (await isLoggedIn()) {
-      return jsonResponse({ data: { message: '已经登录 Cloudflare' } });
+      return jsonResponse({ data: { message: '已经登录 Cloudflare', loggedIn: true } });
     }
     await startLogin();
-    return jsonResponse({ data: { message: '已启动登录，请在浏览器中完成授权' } });
+    // 给 cloudflared 一点时间把授权 URL 打印到日志
+    let authUrl = '';
+    for (let i = 0; i < 10; i++) {
+      await sleep(500);
+      authUrl = await extractAuthUrl();
+      if (authUrl) break;
+    }
+    return jsonResponse({ data: { message: '已启动登录，请在浏览器中打开下方授权链接完成授权', authUrl } });
   } catch (e: any) {
     return jsonResponse({ error: '启动登录失败: ' + (e.message || e) }, 500);
   }
@@ -361,15 +392,13 @@ router.get('/api/login/status', async () => {
   const loggedIn = await isLoggedIn();
   let authUrl = '';
   if (!loggedIn) {
-    const log = await readLoginLog();
-    const match = log.match(CLOUDFLARE_AUTH_REGEX);
-    if (match) authUrl = match[0];
+    authUrl = await extractAuthUrl();
   }
   return jsonResponse({ data: { loggedIn, authUrl } });
 });
 
 router.post('/api/login/cancel', async () => {
-  await songloft.command.stop(LOGIN_PROCESS);
+  await cancelLogin();
   return jsonResponse({ data: { message: '已取消登录' } });
 });
 
