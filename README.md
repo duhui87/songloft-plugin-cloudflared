@@ -13,7 +13,18 @@ npm run validate    # verify plugin.json hashes
 
 ## Description
 
-通过 Cloudflare Tunnel 将本地 Songloft 服务暴露到公
+通过 Cloudflare Tunnel 将本地 Songloft 服务暴露到公网。
+
+支持两种隧道模式：
+
+- **快速隧道**：匿名、无需登录，地址随机（`*.trycloudflare.com`），重启后变化。
+- **命名隧道**：需在插件内登录 Cloudflare 账号，创建后获得固定地址 `https://<名称>.cfargotunnel.com`，重启不变。
+
+### 使用命名隧道
+
+1. 设置页点击「登录 Cloudflare」，在浏览器完成授权。
+2. 选择「命名隧道」模式，填写隧道名称，点「创建命名隧道」。
+3. 返回首页启动隧道，即可得到固定公网地址。
 
 ## Author
 
