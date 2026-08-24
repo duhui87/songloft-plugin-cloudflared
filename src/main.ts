@@ -215,14 +215,7 @@ async function createTunnelViaApi(name: string, accountId: string, apiToken: str
     'GET', `/cfd_tunnel/${id}/token`, apiToken, accountId,
   );
   const token = tokResp.result.token;
-  // 建立 CNAME：https://<name>.cfargotunnel.com 指向该隧道（best-effort）
-  try {
-    await cloudflareApi('POST', '/cfd_tunnel/routes', apiToken, accountId, {
-      tunnel_id: id,
-      source: `https://${name}.cfargotunnel.com`,
-      target: `https://${name}.cfargotunnel.com`,
-    });
-  } catch (_) { /* 路由失败不影响隧道本体运行 */ }
+  // 注：命名隧道会自动分配 https://<name>.cfargotunnel.com，无需额外建路由
   return { id, token };
 }
 
@@ -282,15 +275,21 @@ async function startTunnel(port: string): Promise<void> {
   let args: string[];
 
   if (cfg.tunnel_mode === 'named' && cfg.tunnel_name) {
-    if (cfg.tunnel_token) {
-      // 用 API Token 运行（无需 cert.pem，远程/LAN 友好）
-      args = ['tunnel', 'run', '--token', cfg.tunnel_token, '--url', `http://localhost:${port}`, '--logfile', 'output.log', '--loglevel', 'info'];
-    } else {
-      if (!await tunnelExists(cfg.tunnel_name)) {
+    if (!cfg.tunnel_token) {
+      // 仅配置了 API Token：自动在 Cloudflare 侧创建/获取隧道并取回运行 token
+      if (cfg.cf_api_token && cfg.cf_account_id) {
+        const created = await createTunnelViaApi(cfg.tunnel_name, cfg.cf_account_id, cfg.cf_api_token);
+        cfg.tunnel_id = created.id;
+        cfg.tunnel_token = created.token;
+        await saveConfig(cfg);
+      } else if (await isLoggedIn()) {
         await createTunnel(cfg.tunnel_name, cfg);
+      } else {
+        throw new Error('请先在设置页配置 Cloudflare API Token，或在插件内登录 Cloudflare');
       }
-      args = ['tunnel', 'run', '--url', `http://localhost:${port}`, '--logfile', 'output.log', '--loglevel', 'info', cfg.tunnel_name];
     }
+    // 用 API Token 运行（无需 cert.pem，远程/LAN 友好）
+    args = ['tunnel', 'run', '--token', cfg.tunnel_token, '--url', `http://localhost:${port}`, '--logfile', 'output.log', '--loglevel', 'info'];
   } else {
     args = ['tunnel', '--url', `http://localhost:${port}`, '--logfile', 'output.log', '--loglevel', 'info'];
   }
@@ -399,36 +398,40 @@ router.get('/api/status', async () => {
 });
 
 router.post('/api/start', async (req) => {
-  const body = req.body ? JSON.parse(String(req.body)) : {};
-  const port = body.port || serverPort;
+  try {
+    const body = req.body ? JSON.parse(String(req.body)) : {};
+    const port = body.port || serverPort;
 
-  const running = await isTunnelRunning();
-  if (running) {
-    return jsonResponse({ error: 'cloudflared 已在运行中' }, 409);
+    const running = await isTunnelRunning();
+    if (running) {
+      return jsonResponse({ error: 'cloudflared 已在运行中' }, 409);
+    }
+
+    const cfg = await loadConfig();
+    if (cfg.tunnel_mode === 'named') {
+      if (!cfg.tunnel_name) {
+        return jsonResponse({ error: '未配置隧道名称，请到设置页选择命名隧道并填写名称' }, 400);
+      }
+      // 若已有 API 凭证与隧道 ID 但缺少运行 token，则自动补取（自愈）
+      if (!cfg.tunnel_token && cfg.cf_api_token && cfg.cf_account_id && cfg.tunnel_id) {
+        try {
+          const tokResp = await cloudflareApi<{ result: { token: string } }>(
+            'GET', `/cfd_tunnel/${cfg.tunnel_id}/token`, cfg.cf_api_token, cfg.cf_account_id,
+          );
+          cfg.tunnel_token = tokResp.result.token;
+          await saveConfig(cfg);
+        } catch (_) { /* 忽略，交给下方登录检查 */ }
+      }
+      if (!cfg.tunnel_token && !await isLoggedIn() && !(cfg.cf_api_token && cfg.cf_account_id)) {
+        return jsonResponse({ error: '请先在设置页配置 Cloudflare API Token，或在插件内登录 Cloudflare' }, 401);
+      }
+    }
+
+    await startTunnel(port);
+    return jsonResponse({ data: { message: 'cloudflared 已启动' } });
+  } catch (e: any) {
+    return jsonResponse({ error: '启动失败: ' + (e.message || e) }, 500);
   }
-
-  const cfg = await loadConfig();
-  if (cfg.tunnel_mode === 'named') {
-    if (!cfg.tunnel_name) {
-      return jsonResponse({ error: '未配置隧道名称，请到设置页选择命名隧道并填写名称' }, 400);
-    }
-    // 若已有 API 凭证与隧道 ID 但缺少运行 token，则自动补取（自愈）
-    if (!cfg.tunnel_token && cfg.cf_api_token && cfg.cf_account_id && cfg.tunnel_id) {
-      try {
-        const tokResp = await cloudflareApi<{ result: { token: string } }>(
-          'GET', `/cfd_tunnel/${cfg.tunnel_id}/token`, cfg.cf_api_token, cfg.cf_account_id,
-        );
-        cfg.tunnel_token = tokResp.result.token;
-        await saveConfig(cfg);
-      } catch (_) { /* 忽略，交给下方登录检查 */ }
-    }
-    if (!cfg.tunnel_token && !await isLoggedIn()) {
-      return jsonResponse({ error: '请先在设置页配置 Cloudflare API Token，或在插件内登录 Cloudflare' }, 401);
-    }
-  }
-
-  await startTunnel(port);
-  return jsonResponse({ data: { message: 'cloudflared 已启动' } });
 });
 
 router.post('/api/stop', async () => {
@@ -505,12 +508,14 @@ router.post('/api/login/start', async () => {
 });
 
 router.get('/api/login/status', async () => {
+  const cfg = await loadConfig();
   const loggedIn = await isLoggedIn();
+  const apiConfigured = !!(cfg.cf_api_token && cfg.cf_account_id);
   let authUrl = '';
   if (!loggedIn) {
     authUrl = await extractAuthUrl();
   }
-  return jsonResponse({ data: { loggedIn, authUrl } });
+  return jsonResponse({ data: { loggedIn, apiConfigured, authUrl } });
 });
 
 router.post('/api/login/cancel', async () => {
