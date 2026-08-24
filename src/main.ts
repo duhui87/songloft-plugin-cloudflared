@@ -194,7 +194,8 @@ async function cloudflareApi<T = any>(method: string, path: string, token: strin
 
 // 鐢?API Token 鍦?Cloudflare 渚у垱寤哄懡鍚嶉毀閬擄紙鏃犻渶 cloudflared login / localhost 鍥炶皟锛?
 async function createTunnelViaApi(name: string, accountId: string, apiToken: string): Promise<{ id: string; token: string }> {
-  // 鍏堟煡鏄惁宸插瓨鍦ㄥ悓鍚嶉毀閬擄紝瀛樺湪鍒欏鐢紙閬垮厤閲嶅鍒涘缓锛?  const list = await cloudflareApi<{ result: Array<{ id: string; name: string }> }>(
+  // 鍏堟煡鏄惁宸插瓨鍦ㄥ悓鍚嶉毀閬擄紝瀛樺湪鍒欏鐢紙閬垮厤閲嶅鍒涘缓锛?  
+const list = await cloudflareApi<{ result: Array<{ id: string; name: string }> }>(
     'GET', `/cfd_tunnel?name=${encodeURIComponent(name)}`, apiToken, accountId,
   );
   const existing = (list.result || []).find((t) => t.name === name);
@@ -206,7 +207,8 @@ async function createTunnelViaApi(name: string, accountId: string, apiToken: str
       'POST', '/cfd_tunnel', apiToken, accountId, { name, config_src: 'cloudflare' },
     );
     id = created.result.id;
-    // 鍏滃簳锛氳嫢鍒涘缓杩斿洖閲屾病鏈?id锛屾寜鍚嶇О鍐嶆煡涓€娆★紙鏌愪簺璐︽埛杩斿洖缁撴瀯鐣ユ湁宸紓锛?    if (!id) {
+    // 鍏滃簳锛氳嫢鍒涘缓杩斿洖閲屾病鏈?id锛屾寜鍚嶇О鍐嶆煡涓€娆★紙鏌愪簺璐︽埛杩斿洖缁撴瀯鐣ユ湁宸紓锛?    
+if (!id) {
       const list2 = await cloudflareApi<{ result: Array<{ id: string; name: string }> }>(
         'GET', `/cfd_tunnel?name=${encodeURIComponent(name)}`, apiToken, accountId,
       );
@@ -237,7 +239,8 @@ async function createTunnelViaApi(name: string, accountId: string, apiToken: str
       `璇风‘璁?API Token 鍏峰銆孋loudflare Tunnel: Edit銆嶆潈闄愶紝鐒跺悗閲嶆柊鐐瑰嚮銆屽垱寤哄懡鍚嶉毀閬撱€嶃€俙,
     );
   }
-  // 娉細鍛藉悕闅ч亾浼氳嚜鍔ㄥ垎閰?https://<name>.cfargotunnel.com锛屾棤闇€棰濆寤鸿矾鐢?  return { id, token };
+  // 娉細鍛藉悕闅ч亾浼氳嚜鍔ㄥ垎閰?https://<name>.cfargotunnel.com锛屾棤闇€棰濆寤鸿矾鐢?  
+return { id, token };
 }
 
 async function tunnelExists(name: string): Promise<boolean> {
@@ -258,7 +261,8 @@ async function createTunnel(name: string, cfg?: PluginConfig): Promise<{ id?: st
   if (config.cf_api_token && config.cf_account_id) {
     return await createTunnelViaApi(name, config.cf_account_id, config.cf_api_token);
   }
-  // 鍥為€€锛氶渶瑕佸凡鐧诲綍锛堝悓鏈烘祻瑙堝櫒鐧诲綍锛?  if (!await isLoggedIn()) {
+  // 鍥為€€锛氶渶瑕佸凡鐧诲綍锛堝悓鏈烘祻瑙堝櫒鐧诲綍锛?  
+if (!await isLoggedIn()) {
     throw new Error('鏈厤缃?Cloudflare API Token锛屼笖灏氭湭鍦ㄦ彃浠跺唴鐧诲綍 Cloudflare');
   }
   if (!await tunnelExists(name)) {
@@ -326,7 +330,8 @@ async function startTunnel(port: string): Promise<void> {
         throw new Error('璇峰厛鍦ㄨ缃〉閰嶇疆 Cloudflare API Token锛屾垨鍦ㄦ彃浠跺唴鐧诲綍 Cloudflare');
       }
     }
-    // 鐢?API Token 杩愯锛堟棤闇€ cert.pem锛岃繙绋?LAN 鍙嬪ソ锛?    if (cfg.cf_api_token && cfg.cf_account_id && cfg.tunnel_id) {
+    // 鐢?API Token 杩愯锛堟棤闇€ cert.pem锛岃繙绋?LAN 鍙嬪ソ锛?    
+if (cfg.cf_api_token && cfg.cf_account_id && cfg.tunnel_id) {
       await ensureIngress(cfg, port);
     }
     args = ['tunnel', 'run', '--token', cfg.tunnel_token, '--url', `http://localhost:${port}`, '--logfile', 'output.log', '--loglevel', 'info'];
@@ -545,7 +550,8 @@ router.post('/api/login/start', async () => {
       return jsonResponse({ data: { message: '宸茬粡鐧诲綍 Cloudflare', loggedIn: true } });
     }
     await startLogin();
-    // 缁?cloudflared 涓€鐐规椂闂存妸鎺堟潈 URL 鎵撳嵃鍒版棩蹇?    let authUrl = '';
+    // 缁?cloudflared 涓€鐐规椂闂存妸鎺堟潈 URL 鎵撳嵃鍒版棩蹇?    
+let authUrl = '';
     for (let i = 0; i < 10; i++) {
       await sleep(500);
       authUrl = await extractAuthUrl();
@@ -594,7 +600,8 @@ router.get('/api/tunnel-config', async () => {
 
 router.post('/api/tunnel-config', async (req) => {
   const body = JSON.parse(String(req.body));
-  // 蹇呴』鍦ㄥ凡鏈夐厤缃笂鍚堝苟锛岄伩鍏嶈鐩?API 鍑瘉 / 闅ч亾 token 绛夊瓧娈?  const cfg = await loadConfig();
+  // 蹇呴』鍦ㄥ凡鏈夐厤缃笂鍚堝苟锛岄伩鍏嶈鐩?API 鍑瘉 / 闅ч亾 token 绛夊瓧娈?  
+const cfg = await loadConfig();
   cfg.tunnel_mode = body.tunnel_mode === 'named' ? 'named' : 'quick';
   cfg.tunnel_name = (body.tunnel_name || '').trim();
   if (cfg.tunnel_mode === 'named' && !cfg.tunnel_name) {
