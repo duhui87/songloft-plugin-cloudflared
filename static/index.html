@@ -36,6 +36,10 @@
                         <span class="info-label">版本</span>
                         <span class="info-value" id="installed-version">-</span>
                     </div>
+                    <div class="info-row">
+                        <span class="info-label">模式</span>
+                        <span class="info-value" id="status-mode">-</span>
+                    </div>
                 </div>
             </div>
 
@@ -103,6 +107,77 @@
                     <div class="info-row">
                         <span class="info-label">最新版本</span>
                         <span class="info-value" id="latest-version">-</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Cloudflare 登录卡片 -->
+            <div class="card">
+                <div class="card-header">
+                    <span class="material-symbols-outlined">cloud</span>
+                    <span class="card-title">Cloudflare 账户</span>
+                </div>
+                <div class="card-body">
+                    <div class="info-row">
+                        <span class="info-label">登录状态</span>
+                        <span class="info-value">
+                            <span id="cf-status-dot" class="status-dot stopped"></span>
+                            <span id="cf-status-text">检测中...</span>
+                        </span>
+                    </div>
+                    <div id="cf-auth-row" class="info-row hidden">
+                        <span class="info-label">授权链接</span>
+                        <span class="info-value" style="flex:1;max-width:240px;overflow:hidden;">
+                            <a id="cf-auth-url" href="#" target="_blank" style="color:var(--md-primary);font-size:13px;word-break:break-all;"></a>
+                        </span>
+                    </div>
+                    <div class="action-row">
+                        <button id="btn-cf-login" class="btn-filled">
+                            <span class="material-symbols-outlined">login</span>
+                            登录 Cloudflare
+                        </button>
+                        <button id="btn-cf-cancel" class="btn-filled btn-error hidden">
+                            <span class="material-symbols-outlined">close</span>
+                            取消登录
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 隧道模式卡片 -->
+            <div class="card">
+                <div class="card-header">
+                    <span class="material-symbols-outlined">tunnel</span>
+                    <span class="card-title">隧道模式</span>
+                </div>
+                <div class="card-body">
+                    <div class="info-row">
+                        <span class="info-label">模式</span>
+                        <span class="info-value" style="flex:1;max-width:200px;">
+                            <select id="mode-select" class="select-field" aria-label="隧道模式">
+                                <option value="quick">快速隧道 (随机地址)</option>
+                                <option value="named">命名隧道 (固定地址)</option>
+                            </select>
+                        </span>
+                    </div>
+                    <div id="named-fields" class="hidden">
+                        <div class="info-row" style="flex-direction:column;align-items:stretch;gap:8px;">
+                            <span class="info-label">隧道名称</span>
+                            <input id="tunnel-name" class="text-field-input" type="text" placeholder="例如 my-songloft" style="width:100%;padding:12px;border:1px solid var(--md-outline);border-radius:var(--md-radius-sm);font-family:inherit;font-size:14px;background:transparent;color:var(--md-on-surface);" />
+                        </div>
+                        <div class="action-row">
+                            <button id="btn-create-tunnel" class="btn-filled">
+                                <span class="material-symbols-outlined">add_link</span>
+                                创建命名隧道
+                            </button>
+                        </div>
+                        <div id="named-result" class="desc hidden"></div>
+                    </div>
+                    <div class="action-row">
+                        <button id="btn-save-config" class="btn-filled">
+                            <span class="material-symbols-outlined">save</span>
+                            保存设置
+                        </button>
                     </div>
                 </div>
             </div>
