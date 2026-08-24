@@ -146,7 +146,6 @@ function updateStatusUI(data) {
         statusText.textContent = '运行中';
         startBtn.classList.add('hidden');
         stopBtn.classList.remove('hidden');
-        tunnelCard.classList.remove('hidden');
         startPolling();
     } else {
         statusDot.className = 'status-dot stopped';
@@ -154,8 +153,29 @@ function updateStatusUI(data) {
         startBtn.classList.remove('hidden');
         startBtn.disabled = false;
         stopBtn.classList.add('hidden');
-        tunnelCard.classList.add('hidden');
         stopPolling();
+    }
+
+    // 显示隧道卡片：已创建的命名隧道（稳定链接，与运行状态无关） 或 隧道正在运行（显示实时链接）
+    const namedCreated = data.mode === 'named' && !!data.tunnelId;
+    const showCard = namedCreated || data.running;
+    if (showCard) {
+        tunnelCard.classList.remove('hidden');
+        if (namedCreated) {
+            const urlEl = document.getElementById('tunnel-url');
+            const linkEl = document.getElementById('tunnel-link');
+            if (urlEl && linkEl) {
+                const stableUrl = data.tunnelName
+                    ? `https://${data.tunnelName}.cfargotunnel.com`
+                    : `https://${data.tunnelId}.cfargotunnel.com`;
+                linkEl.href = stableUrl;
+                linkEl.textContent = stableUrl;
+                urlEl.classList.remove('hidden');
+            }
+        }
+        // 运行中的隧道由 startPolling / pollTunnelUrl 刷新实时链接
+    } else {
+        tunnelCard.classList.add('hidden');
     }
 }
 
@@ -170,6 +190,8 @@ async function startTunnel() {
         if (resp && resp.data && resp.data.message) {
             showSnackbar(resp.data.message);
         }
+        btn.disabled = false;
+        btn.innerHTML = '<span class="material-symbols-outlined">play_arrow</span> 启动隧道';
         setTimeout(refreshStatus, 1000);
     } catch (e) {
         showSnackbar('启动失败: ' + e.message);
