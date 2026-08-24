@@ -440,10 +440,11 @@ router.post('/api/start', async (req) => {
       // 若已有 API 凭证与隧道 ID 但缺少运行 token，则自动补取（自愈）
       if (!cfg.tunnel_token && cfg.cf_api_token && cfg.cf_account_id && cfg.tunnel_id) {
         try {
-          const tokResp = await cloudflareApi<{ result: { token: string } }>(
+          const tokResp = await cloudflaredApi<{ result: any }>(
             'GET', `/cfd_tunnel/${cfg.tunnel_id}/token`, cfg.cf_api_token, cfg.cf_account_id,
           );
-          cfg.tunnel_token = tokResp.result.token;
+          const raw = tokResp.result;
+          cfg.tunnel_token = typeof raw === 'string' ? raw : (raw && raw.token);
           await saveConfig(cfg);
         } catch (_) { /* 忽略，交给下方登录检查 */ }
       }
@@ -454,12 +455,12 @@ router.post('/api/start', async (req) => {
 
     await startTunnel(port);
     // 校验进程是否真正存活（cloudflared 可能因参数错误立即退出，songloft.command.start 是「点火即返回」）
-    let running = false;
+    let alive = false;
     for (let i = 0; i < 10; i++) {
       await sleep(500);
-      if (await isTunnelRunning()) { running = true; break; }
+      if (await isTunnelRunning()) { alive = true; break; }
     }
-    if (!running) {
+    if (!alive) {
       const out = await readOutput();
       throw new Error('隧道启动后立即退出，请查看启动日志：\n' + (out || '(日志为空，可能 cloudflared 参数有误或 token 无效)'));
     }
