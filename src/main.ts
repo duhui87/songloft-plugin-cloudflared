@@ -154,6 +154,28 @@ async function extractAuthUrl(): Promise<string> {
   return match ? match[0] : '';
 }
 
+// 计算 cloudflared 期望的证书目录（cert.pem 所在位置）
+async function getCloudflaredHome(): Promise<string> {
+  if (isWindows()) {
+    const r = await songloft.command.exec('cmd', ['/c', 'echo %USERPROFILE%'], { timeout: 5000 });
+    return (r.stdout || '').trim() + '\\.cloudflared';
+  }
+  const r = await songloft.command.exec('sh', ['-c', 'echo $HOME'], { timeout: 5000 });
+  return (r.stdout || '').trim() + '/.cloudflared';
+}
+
+// 手动写入 cert.pem（当 cloudflared 自动回传证书失败时，由用户在浏览器下载后粘贴上传）
+async function uploadCert(content: string): Promise<void> {
+  const home = await getCloudflaredHome();
+  if (isWindows()) {
+    await songloft.command.exec('mkdir', [home]);
+  } else {
+    await songloft.command.exec('mkdir', ['-p', home]);
+  }
+  const sep = isWindows() ? '\\' : '/';
+  await songloft.fs.writeFile(home + sep + 'cert.pem', content);
+}
+
 // --- 命名隧道管理 ---
 
 async function cloudflareApi<T = any>(method: string, path: string, token: string, accountId: string, body?: any): Promise<T> {
@@ -390,6 +412,16 @@ router.post('/api/start', async (req) => {
     if (!cfg.tunnel_name) {
       return jsonResponse({ error: '未配置隧道名称，请到设置页选择命名隧道并填写名称' }, 400);
     }
+    // 若已有 API 凭证与隧道 ID 但缺少运行 token，则自动补取（自愈）
+    if (!cfg.tunnel_token && cfg.cf_api_token && cfg.cf_account_id && cfg.tunnel_id) {
+      try {
+        const tokResp = await cloudflareApi<{ result: { token: string } }>(
+          'GET', `/cfd_tunnel/${cfg.tunnel_id}/token`, cfg.cf_api_token, cfg.cf_account_id,
+        );
+        cfg.tunnel_token = tokResp.result.token;
+        await saveConfig(cfg);
+      } catch (_) { /* 忽略，交给下方登录检查 */ }
+    }
     if (!cfg.tunnel_token && !await isLoggedIn()) {
       return jsonResponse({ error: '请先在设置页配置 Cloudflare API Token，或在插件内登录 Cloudflare' }, 401);
     }
@@ -484,6 +516,20 @@ router.get('/api/login/status', async () => {
 router.post('/api/login/cancel', async () => {
   await cancelLogin();
   return jsonResponse({ data: { message: '已取消登录' } });
+});
+
+router.post('/api/cert', async (req) => {
+  try {
+    const body = JSON.parse(String(req.body));
+    const content = (body.content || '').trim();
+    if (!content.includes('BEGIN CERTIFICATE')) {
+      return jsonResponse({ error: '内容不是有效的 cert.pem' }, 400);
+    }
+    await uploadCert(content);
+    return jsonResponse({ data: { message: 'cert.pem 已写入，请刷新登录状态' } });
+  } catch (e: any) {
+    return jsonResponse({ error: '写入证书失败: ' + (e.message || e) }, 500);
+  }
 });
 
 router.get('/api/tunnel-config', async () => {
