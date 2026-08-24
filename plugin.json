@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/songloft-org/plugin-toolchain/main/schemas/plugin.schema.json",
   "name": "Cloudflared 隧道",
-  "version": "0.0.2",
+  "version": "2026.8.10",
   "description": "通过 Cloudflare Tunnel 将本地 Songloft 服务暴露到公网",
   "author": "Songloft Team",
   "homepage": "",
@@ -15,7 +15,7 @@
     "fs"
   ],
   "updateUrl": "https://raw.githubusercontent.com/songloft-org/songloft-plugin-cloudflared/main/plugin.json",
-  "download_url": "https://github.com/duhui87/songloft-plugin-cloudflared/releases/download/v0.0.2/cloudflared.jsplugin.zip",
+  "download_url": "https://github.com/songloft-org/songloft-plugin-cloudflared/releases/download/v2026.8.10/cloudflared.jsplugin.zip",
   "entryHash": "",
   "zipHash": ""
 }
