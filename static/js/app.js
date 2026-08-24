@@ -346,6 +346,7 @@ async function downloadCloudflared() {
 // ============================================
 
 let loginPollTimer = null;
+let loginInProgress = false;
 
 async function loadTunnelConfig() {
     try {
@@ -379,21 +380,19 @@ async function checkLoginStatus() {
             loginBtn.classList.add('hidden');
             cancelBtn.classList.add('hidden');
             authRow.classList.add('hidden');
+            loginInProgress = false;
             stopLoginPolling();
         } else {
             dot.className = 'status-dot stopped';
             text.textContent = '未登录';
             loginBtn.classList.remove('hidden');
+            cancelBtn.classList.toggle('hidden', !loginInProgress);
             authRow.classList.add('hidden');
             if (resp.data.authUrl) {
                 const link = document.getElementById('cf-auth-url');
                 link.href = resp.data.authUrl;
                 link.textContent = resp.data.authUrl;
                 authRow.classList.remove('hidden');
-                cancelBtn.classList.remove('hidden');
-                startLoginPolling();
-            } else {
-                cancelBtn.classList.add('hidden');
             }
         }
     } catch (e) {
@@ -416,13 +415,23 @@ function stopLoginPolling() {
 async function startCfLogin() {
     const btn = document.getElementById('btn-cf-login');
     btn.disabled = true;
+    loginInProgress = true;
     try {
         const resp = await apiPost('/api/login/start', {});
-        if (resp && resp.data && resp.data.message) {
-            showSnackbar(resp.data.message);
+        if (resp && resp.error) {
+            showSnackbar(resp.error);
+        } else if (resp && resp.data) {
+            showSnackbar(resp.data.message || '已启动登录');
+            // 立即展示授权链接（若已返回）
+            if (resp.data.authUrl) {
+                const link = document.getElementById('cf-auth-url');
+                link.href = resp.data.authUrl;
+                link.textContent = resp.data.authUrl;
+                document.getElementById('cf-auth-row').classList.remove('hidden');
+                document.getElementById('btn-cf-cancel').classList.remove('hidden');
+            }
+            startLoginPolling();
         }
-        startLoginPolling();
-        setTimeout(checkLoginStatus, 1000);
     } catch (e) {
         showSnackbar('登录启动失败: ' + e.message);
     } finally {
@@ -431,6 +440,7 @@ async function startCfLogin() {
 }
 
 async function cancelCfLogin() {
+    loginInProgress = false;
     try {
         await apiPost('/api/login/cancel', {});
         showSnackbar('已取消登录');
