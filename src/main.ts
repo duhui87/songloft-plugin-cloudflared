@@ -206,15 +206,19 @@ async function createTunnelViaApi(name: string, accountId: string, apiToken: str
     id = existing.id;
   } else {
     const created = await cloudflareApi<{ result: { id: string } }>(
-      'POST', '/cfd_tunnel', apiToken, accountId, { name },
+      'POST', '/cfd_tunnel', apiToken, accountId, { name, config_src: 'cloudflare' },
     );
     id = created.result.id;
   }
-  // 创建接口不含 token，需单独获取隧道 Token
-  const tokResp = await cloudflareApi<{ result: { token: string } }>(
+  // 注意：该接口返回 result 是「字符串形式的 token」，不是 { token: ... }
+  const tokResp = await cloudflaredApi<{ result: any }>(
     'GET', `/cfd_tunnel/${id}/token`, apiToken, accountId,
   );
-  const token = tokResp.result.token;
+  const raw = tokResp.result;
+  const token: string = typeof raw === 'string' ? raw : (raw && raw.token);
+  if (!token) {
+    throw new Error('无法获取隧道运行 token（Cloudflare 返回的 token 字段为空，请检查 API Token 权限）');
+  }
   // 注：命名隧道会自动分配 https://<name>.cfargotunnel.com，无需额外建路由
   return { id, token };
 }
@@ -270,6 +274,24 @@ async function getVersion(): Promise<string> {
 
 // --- 隧道管理 ---
 
+// 为「远程托管」隧道写入 ingress 配置（指向本机服务），避免依赖 --url 的行为差异
+async function ensureIngress(cfg: PluginConfig, port: string): Promise<void> {
+  if (!cfg.cf_api_token || !cfg.cf_account_id || !cfg.tunnel_id || !cfg.tunnel_name) return;
+  const body = {
+    config: {
+      ingress: [
+        { hostname: `${cfg.tunnel_name}.cfargotunnel.com`, service: `http://localhost:${port}` },
+        { service: 'http_status:404' },
+      ],
+    },
+  };
+  try {
+    await cloudflaredApi('PUT', `/cfd_tunnel/${cfg.tunnel_id}/configurations`, cfg.cf_api_token, cfg.cf_account_id, body);
+  } catch (e: any) {
+    songloft.log.info('设置 ingress 配置失败，将依赖 --url 参数: ' + (e && e.message));
+  }
+}
+
 async function startTunnel(port: string): Promise<void> {
   const cfg = await loadConfig();
   let args: string[];
@@ -289,6 +311,9 @@ async function startTunnel(port: string): Promise<void> {
       }
     }
     // 用 API Token 运行（无需 cert.pem，远程/LAN 友好）
+    if (cfg.cf_api_token && cfg.cf_account_id && cfg.tunnel_id) {
+      await ensureIngress(cfg, port);
+    }
     args = ['tunnel', 'run', '--token', cfg.tunnel_token, '--url', `http://localhost:${port}`, '--logfile', 'output.log', '--loglevel', 'info'];
   } else {
     args = ['tunnel', '--url', `http://localhost:${port}`, '--logfile', 'output.log', '--loglevel', 'info'];
@@ -390,11 +415,11 @@ router.get('/api/status', async () => {
   const installed = await isInstalled();
   const cfg = await loadConfig();
   if (!installed) {
-    return jsonResponse({ data: { installed: false, running: false, version: '', mode: cfg.tunnel_mode, tunnelName: cfg.tunnel_name } });
+    return jsonResponse({ data: { installed: false, running: false, version: '', mode: cfg.tunnel_mode, tunnelName: cfg.tunnel_name, tunnelId: cfg.tunnel_id } });
   }
   const running = await isTunnelRunning();
   const version = await getVersion();
-  return jsonResponse({ data: { installed: true, running, version, mode: cfg.tunnel_mode, tunnelName: cfg.tunnel_name } });
+  return jsonResponse({ data: { installed: true, running, version, mode: cfg.tunnel_mode, tunnelName: cfg.tunnel_name, tunnelId: cfg.tunnel_id } });
 });
 
 router.post('/api/start', async (req) => {
@@ -428,6 +453,16 @@ router.post('/api/start', async (req) => {
     }
 
     await startTunnel(port);
+    // 校验进程是否真正存活（cloudflared 可能因参数错误立即退出，songloft.command.start 是「点火即返回」）
+    let running = false;
+    for (let i = 0; i < 10; i++) {
+      await sleep(500);
+      if (await isTunnelRunning()) { running = true; break; }
+    }
+    if (!running) {
+      const out = await readOutput();
+      throw new Error('隧道启动后立即退出，请查看启动日志：\n' + (out || '(日志为空，可能 cloudflared 参数有误或 token 无效)'));
+    }
     return jsonResponse({ data: { message: 'cloudflared 已启动' } });
   } catch (e: any) {
     return jsonResponse({ error: '启动失败: ' + (e.message || e) }, 500);
@@ -544,10 +579,10 @@ router.get('/api/tunnel-config', async () => {
 
 router.post('/api/tunnel-config', async (req) => {
   const body = JSON.parse(String(req.body));
-  const cfg: PluginConfig = {
-    tunnel_mode: body.tunnel_mode === 'named' ? 'named' : 'quick',
-    tunnel_name: (body.tunnel_name || '').trim(),
-  };
+  // 必须在已有配置上合并，避免覆盖 API 凭证 / 隧道 token 等字段
+  const cfg = await loadConfig();
+  cfg.tunnel_mode = body.tunnel_mode === 'named' ? 'named' : 'quick';
+  cfg.tunnel_name = (body.tunnel_name || '').trim();
   if (cfg.tunnel_mode === 'named' && !cfg.tunnel_name) {
     return jsonResponse({ error: '命名隧道模式需要填写隧道名称' }, 400);
   }
