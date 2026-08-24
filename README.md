@@ -22,9 +22,18 @@ npm run validate    # verify plugin.json hashes
 
 ### 使用命名隧道
 
-1. 设置页点击「登录 Cloudflare」，在浏览器完成授权。
+命名隧道需要 Cloudflare 账号认证，有两种方式：
+
+**方式 A：API Token（推荐，支持局域网/远程）**
+1. 在 Cloudflare 控制台创建一个具有 Cloudflare Tunnel 权限的 API Token，并复制 Account ID。
+2. 设置页「Cloudflare API 凭证」填入 Account ID 与 API Token，点「保存凭证」。
+3. 选择「命名隧道」模式，填写隧道名称，点「创建命名隧道」（无需本机浏览器登录）。
+
+**方式 B：插件内浏览器登录（仅同机访问）**
+1. 设置页点击「登录 Cloudflare」，在**与服务器同一台机器**的浏览器完成授权。
 2. 选择「命名隧道」模式，填写隧道名称，点「创建命名隧道」。
-3. 返回首页启动隧道，即可得到固定公网地址。
+
+创建后返回首页启动隧道，即可得到固定地址 `https://<名称>.cfargotunnel.com`。
 
 ## Author
 
