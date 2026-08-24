@@ -111,13 +111,14 @@
                 </div>
             </div>
 
-            <!-- Cloudflare 登录卡片 -->
+            <!-- Cloudflare 登录卡片（仅同机备用） -->
             <div class="card">
                 <div class="card-header">
                     <span class="material-symbols-outlined">cloud</span>
-                    <span class="card-title">Cloudflare 账户</span>
+                    <span class="card-title">Cloudflare 账户（仅同机备用）</span>
                 </div>
                 <div class="card-body">
+                    <div class="desc">推荐先用上方「Cloudflare API 凭证」方式（无需浏览器与证书）。本卡片仅用于与服务器同一台机器时的备用浏览器登录。</div>
                     <div class="info-row">
                         <span class="info-label">登录状态</span>
                         <span class="info-value">
@@ -134,11 +135,21 @@
                     <div class="action-row">
                         <button id="btn-cf-login" class="btn-filled">
                             <span class="material-symbols-outlined">login</span>
-                            登录 Cloudflare
+                            登录 Cloudflare（仅同机备用）
                         </button>
                         <button id="btn-cf-cancel" class="btn-filled btn-error hidden">
                             <span class="material-symbols-outlined">close</span>
                             取消登录
+                        </button>
+                    </div>
+                    <div class="info-row" style="flex-direction:column;align-items:stretch;gap:8px;margin-top:12px;">
+                        <span class="info-label">上传 cert.pem（登录后若自动写入失败，可粘贴浏览器下载的证书内容）</span>
+                        <textarea id="cf-cert" rows="4" placeholder="-----BEGIN CERTIFICATE-----&#10;...&#10;-----END CERTIFICATE-----" style="width:100%;padding:12px;border:1px solid var(--md-outline);border-radius:var(--md-radius-sm);font-family:monospace;font-size:12px;background:transparent;color:var(--md-on-surface);resize:vertical;"></textarea>
+                    </div>
+                    <div class="action-row">
+                        <button id="btn-upload-cert" class="btn-filled">
+                            <span class="material-symbols-outlined">upload</span>
+                            上传证书
                         </button>
                     </div>
                 </div>
