@@ -92,13 +92,15 @@ async function saveConfig(cfg: PluginConfig): Promise<void> {
 
 // cloudflared tunnel login 会把授权 URL 打印到 stdout，且宿主进程无法弹出浏览器。
 // 这里用 shell 重定向把 stdout 写进日志文件，再从中提取 URL 展示给用户手动打开。
+// 注意：插件下载的 cloudflared 位于插件目录下的 bin/ 子目录，不在 PATH 中，
+// 所以 shell 里要用相对路径 bin/<name> 来调用。
 async function startLogin(): Promise<void> {
   const bin = getBinName();
   if (isWindows()) {
-    const cmd = `${bin} tunnel login > ${LOGIN_LOG} 2>&1`;
+    const cmd = `if exist "bin\\${bin}" (set "BIN=bin\\${bin}") else (set "BIN=${bin}") & "%BIN%" tunnel login > ${LOGIN_LOG} 2>&1`;
     await songloft.command.start(LOGIN_PROCESS, 'cmd', ['/c', cmd]);
   } else {
-    const cmd = `BIN=$(command -v ${bin} 2>/dev/null || echo ./${bin}); "$BIN" tunnel login > ${LOGIN_LOG} 2>&1`;
+    const cmd = `if [ -x "bin/${bin}" ]; then BIN="bin/${bin}"; elif [ -x "./${bin}" ]; then BIN="./${bin}"; else BIN="${bin}"; fi; "$BIN" tunnel login > ${LOGIN_LOG} 2>&1`;
     await songloft.command.start(LOGIN_PROCESS, 'sh', ['-c', cmd]);
   }
 }
